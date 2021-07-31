@@ -18,16 +18,16 @@ GNSS
     - pos_n
     - pos_e
     - pos_d
-    
+
     Velocity (NED)
     - v_n
     - v_e
     - v_d
-    
+
     New Measurement flag
     - gnss_new_data
-    
-Magnetometer 
+
+Magnetometer
     - mag_field_x
     - mag_field_y
     - mag_field_z
@@ -67,7 +67,7 @@ X: states:
     - error in roll
     - bias angular rate pitch
     - bias angular rate roll
-    
+
     measurements:
     - specific forces
 """
@@ -94,6 +94,7 @@ class GNSS_filter:
                                       mag_ref,
                                       np.matrix([row["mag_field_x"],row["mag_field_y"],row["mag_field_z"]]))
 
+        # Rotational matrix from body to NED frame
         self.Cnb = rot.from_euler("xyz", self.X[6:9].transpose()).as_matrix()[0]
 
     # Process model
@@ -105,10 +106,6 @@ class GNSS_filter:
         self.F[6:9, 9:12] = -np.identity(3)*dt
 
         self.P = np.identity(self.Nx)
-
-        # Observation matrix
-        self.H = np.zeros([self.Nm, self.Nx])
-        self.H[0:9, 0:9] = np.identity(9)
 
         # Process noise matrix
         self.Q = np.zeros([self.Nx, self.Nx])
@@ -129,23 +126,38 @@ class GNSS_filter:
         self.Q[12:15, 12:15] = np.identity(3)*1.0e-7
 
 
-        # Sensor noise matrix
-        self.R = np.zeros([self.Nm,self.Nm])
-
         # Position measurement noise
-        self.R[0:3, 0:3] = np.identity(3)*2
+        self.R_position = np.identity(3)*2
 
         # Velocity measurement noise
-        self.R[3:6, 3:6] = np.identity(3)
+        self.R_velocity = np.identity(3)
 
         # Attitude (acc noise)
-        self.R[6,6] = 9
-        self.R[7,7] = 9
-        self.R[8,8] = 9
-        
-        
+        self.R_attitude = np.identity(2)*5
+
+        # Heading
+        self.R_heading = 0.0625
+
+
+    def updateQ(self,dt):
+        # Position estimation noise
+        self.Q[0:3, 0:3] = np.identity(3)*1e-2*dt
+
+        # Velocity estimation noise (acc psd)
+        self.Q[3:6, 3:6] = np.identity(3)*1e-1*dt
+
+        # Attitude estimation noise (gyro psd)
+        self.Q[6:9, 6:9] = np.identity(3)*3.5e-1*dt
+
+        # Acceleration bias estimation noise (acc bias psd)
+        self.Q[9:12, 9:12] = np.identity(3)*1.0e-6*dt
+
+        # Gyro bias estimation noise (gyro bias psd)
+        self.Q[12:15, 12:15] = np.identity(3)*1.0e-5*dt
+
+
     def getEulerAnglesFromAccel(self, a_bib):
-        eul_nb = np.zeros([3,1])
+        eul_nb = np.zeros([2,1])
         eul_nb[0] = -np.arctan2(a_bib[1], np.sqrt(a_bib[1]**2+a_bib[2]**2))
         eul_nb[1] = np.arctan2(a_bib[0], np.sqrt(a_bib[0]**2+a_bib[2]**2))
 
@@ -169,8 +181,64 @@ class GNSS_filter:
         self.F[3:6, 12:15] = -self.Cnb*dt
         self.F[6:9, 9:12] = -self.Cnb*dt
 
+        # self.updateQ(dt)
+
         self.X = self.F@self.X + u
         self.P = self.F@self.P@self.F.transpose() + self.Q
+
+
+    def updateAttitude(self, a_bib=np.zeros([1,3])):
+        H = np.zeros([2, self.Nx])
+        H[0,6] = 1
+        H[1,7] = 1
+
+        eul_nb_k = self.getEulerAnglesFromAccel(a_bib.transpose())
+
+        y = eul_nb_k - H @ self.X
+        S = H @ self.P @ H.transpose() + self.R_attitude
+        K = (self.P @ H.transpose()) @ inv(S)
+        self.X += K @ y
+
+        I = np.identity(self.Nx)
+        self.P = (I - K @ H) @ self.P
+
+
+    def updateHeading(self, mag_field= np.zeros([1,3]) ):
+        H = np.zeros([1, self.Nx])
+        H[0,8] = 1
+        mag_heading = self.mag_heading(self.X[6:9], self.mag_ref, mag_field)
+
+        y = mag_heading - H @ self.X
+        S = H @ self.P @ H.transpose() + self.R_heading
+        K = (self.P @ H.transpose()) @ inv(S)
+        self.X += K @ y
+
+        I = np.identity(self.Nx)
+        self.P = (I - K @ H) @ self.P
+
+    def updatePosition(self, pos_ned= np.zeros([1,3])):
+        H = np.zeros([3, self.Nx])
+        H[0:3, 0:3] = np.identity(3)
+
+        y = pos_ned.transpose() - H @ self.X
+        S = H @ self.P @ H.transpose() + self.R_position
+        K = (self.P @ H.transpose()) @ inv(S)
+        self.X += K @ y
+
+        I = np.identity(self.Nx)
+        self.P = (I - K @ H) @ self.P
+
+    def updateVelocity(self, v_ned= np.zeros([1,3])):
+        H = np.zeros([3, self.Nx])
+        H[0:3,3:6] = np.identity(3)
+
+        y = v_ned.transpose() - H @ self.X
+        S = H @ self.P @ H.transpose() + self.R_velocity
+        K = (self.P @ H.transpose()) @ inv(S)
+        self.X += K @ y
+
+        I = np.identity(self.Nx)
+        self.P = (I - K @ H) @ self.P
 
 
     # z is the height measured
@@ -211,11 +279,16 @@ class GNSS_filter:
 
     def mag_heading(self, eul_nb, local_mag_ref, mag_field_norm):
         mag_field_norm = mag_field_norm.transpose()
-        eul_nb[2] = 0
-        Cnb = rot.from_euler("xyz", eul_nb.transpose()).as_matrix()[0]
+
+        # copy value that has been passed by reference, to avoid overwriting it.
+        temp_eul = np.zeros([1,3])
+        temp_eul[0,0] = eul_nb[0]
+        temp_eul[0,1] = eul_nb[1]
+
+        Cnb = rot.from_euler("xyz", temp_eul).as_matrix()[0]
         mag_field_nf = Cnb@mag_field_norm
         heading = -np.arctan2(mag_field_nf[1], mag_field_nf[0]) + np.arctan2(local_mag_ref[1], local_mag_ref[0])
-        
+
         return np.asscalar(heading)
 
 
@@ -238,7 +311,7 @@ class GNSS_filter:
                 "acc_bias_z": np.asscalar(self.X[14])
         }
 
-    
+
 def run_filter_simulation(df, mag_ref):
     import time
 
@@ -246,7 +319,7 @@ def run_filter_simulation(df, mag_ref):
 
     init = False
     results = pd.DataFrame()
-    
+
     last_time = 0
     dt = 0
     for index, row in df.iterrows():
@@ -262,18 +335,18 @@ def run_filter_simulation(df, mag_ref):
 
         #Attitude update happens at each step
         # Note: The IMU run faster than the data collection device used (100 Hz). Therefore, all measurements
-        # from the IMU are input to the update step.
-        
-        gnss_kf.update(a_bib = np.matrix([row["imu_accel_x"], row["imu_accel_y"], row["imu_accel_z"]]))
-        
+        # from the IMU are always considered as new measurements.
+
+        gnss_kf.updateAttitude(a_bib = np.matrix([row["imu_accel_x"], row["imu_accel_y"], row["imu_accel_z"]]))
+
         # new magnetometer measurement
         if row["mag_new_data"]:
-            gnss_kf.update(mag_field = np.matrix([row["mag_field_x"],row["mag_field_y"],row["mag_field_z"]]) )
-        
+            gnss_kf.updateHeading(mag_field = np.matrix([row["mag_field_x"],row["mag_field_y"],row["mag_field_z"]]) )
+
         # new GNSS measurement
         if row["gnss_new_data"]:
-            gnss_kf.update(pos_ned = np.matrix([row["pos_n"], row["pos_e"], row["pos_d"]]),
-                           v_ned = np.matrix([row["v_n"], row["v_e"], row["v_d"]]))
+            gnss_kf.updatePosition(pos_ned = np.matrix([row["pos_n"], row["pos_e"], row["pos_d"]]))
+            gnss_kf.updateVelocity(v_ned = np.matrix([row["v_n"], row["v_e"], row["v_d"]]))
 
         dt = row["time"] - last_time
         last_time = row["time"]
