@@ -43,8 +43,8 @@ measurements (blue).
 
 ### Notes
 Normally, a GNSS sensor will output the position in ECEF or LLA coordinates.
-For UAV, it is more common to use NED coordinates, as it provides more manageable numbers in a cartesian frame.
-In order to transform these coordinates to NED, a reference point (usually the take-off position) and a rotational matrix
+For an UAV, it is more common to use NED coordinates, as they provide more manageable numbers in a cartesian frame.
+In order to transform those coordinates to NED, a reference point (usually the take-off position) and a rotational matrix
 are used. More info can be found in https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates.
 Also, if a magnetometer is used to measure the heading, a magnetic reference is needed to correct the magnetic field.
 The world magnetic model (http://www.ngdc.noaa.gov/geomag/WMM/) provide those values based on the global position.
