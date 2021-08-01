@@ -21,9 +21,13 @@ from scipy.spatial.transform import Rotation as rot
 X: states:
     - pitch
     - roll
+    - yaw (not used)
     - bias angular rate pitch
     - bias angular rate roll
-    
+    - bias angular rate yaw
+
+Note: In order to compute yaw, an additional sensor like a magnetometer is required.
+
 u:    inputs
     - Euler angles
 """
@@ -43,7 +47,7 @@ class INS_filter:
 
         # Process model
         self.F = np.identity(6)
-        self.F[0:3,3:6] = -dt*np.identity(3)
+        self.F[0:3,3:6] = -dt*self.Cnb
 
         # Control action model
         self.B = np.zeros([6,3])

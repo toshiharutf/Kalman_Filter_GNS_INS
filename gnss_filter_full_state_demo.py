@@ -101,10 +101,10 @@ class GNSS_filter:
     # Process model
 
         self.F = np.identity(self.Nx)
-        # self.F[0:3, 3:6] = np.identity(3)*dt
-        # self.F[0:3, 12:15] = -np.identity(3)*dt2/2
-        # self.F[3:6, 12:15] = -np.identity(3)*dt
-        # self.F[6:9, 9:12] = -np.identity(3)*dt
+        self.F[0:3, 3:6] = np.identity(3)*dt
+        self.F[0:3, 12:15] = -self.Cnb*dt2/2
+        self.F[3:6, 12:15] = -self.Cnb*dt
+        self.F[6:9, 9:12] = -self.Cnb*dt
 
         self.P = np.identity(self.Nx)
 
