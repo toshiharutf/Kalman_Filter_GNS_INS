@@ -46,8 +46,6 @@ class INS_filter:
         self.F[0:3,3:6] = -dt*np.identity(3)
 
         # Control action model
-        # Note, this a simplified model, because the IMU data is
-        # available, therefore there is no need to estimate the state from the actuators
         self.B = np.zeros([6,3])
         self.B[0:3, 0:3] = np.identity(3)*dt
 
@@ -56,13 +54,11 @@ class INS_filter:
         self.H[0:3, 0:3] = np.identity(3)
 
         # Process noise matrix
+        self.gyro_psd = 3.5e-4
+        self.gyro_bias_psd = 1e-7
+
         self.Q = np.zeros([6,6])
-        self.Q[0][0] = 3.5e-5
-        self.Q[1][1] = 3.5e-5
-        self.Q[2][2] = 3.5e-5
-        self.Q[3][3] = 1.0e-7
-        self.Q[4][4] = 1.0e-7
-        self.Q[5][5] = 1.0e-7
+        self.updateQ(dt)
 
         # Sensor noise matrix (accel)
         self.R = np.zeros([3,3])
@@ -70,10 +66,15 @@ class INS_filter:
         self.R[1][1] = 5
         self.R[2][2] = 5
 
+    def updateQ(self, dt):
+        self.Q[0:3, 0:3] = np.identity(3)*self.gyro_psd*dt
+        self.Q[3:6, 3:6] = np.identity(3) * self.gyro_bias_psd * dt
 
     def predict(self, w, dt): # w is the angular rate vector
         self.Cnb = rot.from_euler("xyz", self.X[0:3].transpose()).as_matrix()[0]
         u = w.transpose()
+
+        self.updateQ(dt)
 
         #update dt
         self.F[0:3,3:6] = -dt*self.Cnb
@@ -118,18 +119,21 @@ def run_filter_simulation(df):
     init = False
     kf_ins_res = {"roll": [], "pitch":[], "yaw":[], "gyro_bias_roll":[], "gyro_bias_pitch":[]}
     last_time = 0
-    dt = 0
     for index, row in df.iterrows():
         if not init:
             ins_kf = INS_filter(row)
             init = True
-            dt = 3e-3
+            last_time = row["time"] - 1e-2
 
-        ins_kf.predict(np.matrix([row["imu_gyro_x"], row["imu_gyro_y"], row["imu_gyro_z"]]), dt)
-        ins_kf.updateAttitude(np.matrix([row["imu_accel_x"], row["imu_accel_y"], row["imu_accel_z"]]))
+        # Note: in a real-time system, the prediction step should run at each iteration
+        # This hack is only used here for simulation purposes
+        if row["imu_new_data"]:
+            dt = row["time"] - last_time
+            ins_kf.predict(np.matrix([row["imu_gyro_x"], row["imu_gyro_y"], row["imu_gyro_z"]]), dt)
+            last_time = row["time"]
 
-        dt = row["time"] - last_time
-        last_time = row["time"]
+        if row["imu_new_data"]:
+            ins_kf.updateAttitude(np.matrix([row["imu_accel_x"], row["imu_accel_y"], row["imu_accel_z"]]))
 
         res = ins_kf.get_states()
         kf_ins_res["roll"].append(res["roll"])
@@ -165,5 +169,5 @@ def run_filter_simulation(df):
 
 if __name__ == "__main__":
     import pandas as pd
-    data = pd.read_csv("gns_ins_data.csv")
+    data = pd.read_csv("gns_ins_data2.csv")
     run_filter_simulation(data)
