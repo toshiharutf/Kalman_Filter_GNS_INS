@@ -43,8 +43,9 @@ class INS_filter:
         self.X[1] = np.arctan2(data["imu_accel_x"], np.sqrt(data["imu_accel_x"]**2+data["imu_accel_z"]**2))
 
         self.Cnb = rot.from_euler("xy", self.X[0:2].transpose()).as_matrix()[0]
+        self.last_a_bib = np.zeros([3,1])
 
-        self.P = np.identity(6)*1e-2
+        self.P = np.identity(6)*1e-5
 
         # Process model
         self.F = np.identity(6)
@@ -66,7 +67,7 @@ class INS_filter:
         self.updateQ(dt)
 
         # Sensor noise matrix (accel)
-        self.R = np.identity(3)*3 #30
+        self.R = np.identity(3)*9e-2
 
 
     def updateQ(self, dt):
@@ -90,6 +91,9 @@ class INS_filter:
 
     def updateAttitude(self, a_bib):
         a_bib = a_bib.transpose()
+
+        a_bib = 0.3*a_bib + (1-0.3)*self.last_a_bib
+        self.last_a_bib = a_bib
         hx = self.gravityInBodyFrame(self.X[0:2])
         y = a_bib - hx
         # self.g = np.sqrt(a_bib[0]**2+a_bib[1]**2+a_bib[2]**2)
@@ -97,16 +101,6 @@ class INS_filter:
         H = self.eulerHJacobian(self.X[0:2])
         hx_approx = self.gravityInBodyFrame(np.zeros([2,1])) + H@self.X
 
-        # g_vector = np.matrix([0,0,-9.81]).transpose()
-        # g = 9.81
-        # hx = self.Cnb.transpose()@g_vector
-        # h1 = g*np.sin(self.X[1])*np.cos(self.X[0])
-        # h2 = -g * np.sin(self.X[0])
-        # h3 = -g * np.cos(self.X[1]) * np.cos(self.X[0])
-        # J = self.eulerHJacobian(self.X[0:2])
-
-        # z = self.getEulerAnglesFromAccel(a_bib.transpose())
-        # y = z - self.H@self.X
         S = H@self.P@H.transpose() + self.R
         K = (self.P@H.transpose())@inv(S)
         self.X = self.X+K@y
