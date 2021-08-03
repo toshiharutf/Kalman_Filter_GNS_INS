@@ -92,9 +92,9 @@ class INS_filter:
     def updateAttitude(self, a_bib):
         hx = self.gravityInBodyFrame(self.X[0:2])
         y = a_bib.transpose() - hx
-        # hx_approx =
 
         H = self.eulerHJacobian(self.X[0:2])
+        hx_approx = self.gravityInBodyFrame(np.zeros([2,1])) + H@self.X
 
         # g_vector = np.matrix([0,0,-9.81]).transpose()
         # g = 9.81
