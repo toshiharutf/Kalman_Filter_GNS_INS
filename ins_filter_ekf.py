@@ -90,7 +90,7 @@ class INS_filter:
 
 
     def updateAttitude(self, a_bib):
-        hx = self.gravityInBodyFrame()
+        hx = self.gravityInBodyFrame(self.X[0:2])
         y = a_bib.transpose() - hx
         # hx_approx =
 
@@ -113,11 +113,13 @@ class INS_filter:
         I = np.identity(6)
         self.P = (I-K@self.H)@self.P
 
-    def gravityInBodyFrame(self):
+    def gravityInBodyFrame(self,roll_pitch: np.zeros([2,1]) ):
         g = 9.81
-        h1 = g * np.sin(self.X[1]) * np.cos(self.X[0])
-        h2 = -g * np.sin(self.X[0])
-        h3 = -g * np.cos(self.X[1]) * np.cos(self.X[0])
+        theta = roll_pitch[0]
+        phi = roll_pitch[1]
+        h1 = g * np.sin(phi) * np.cos(theta)
+        h2 = -g * np.sin(theta)
+        h3 = -g * np.cos(phi) * np.cos(theta)
         return np.matrix([h1.item(),h2.item(),h3.item()]).transpose().astype(float)
 
     def eulerHJacobian(self, roll_pitch: np.zeros([2,1])) -> np.zeros([3,6]):
