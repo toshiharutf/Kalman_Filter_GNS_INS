@@ -43,7 +43,7 @@ class INS_filter:
 
         self.Cnb = rot.from_euler("xyz", self.X[0:3].transpose()).as_matrix()[0]
 
-        self.P = np.identity(6)
+        self.P = np.identity(6)*1e-3
 
         # Process model
         self.F = np.identity(6)
@@ -66,9 +66,9 @@ class INS_filter:
 
         # Sensor noise matrix (accel)
         self.R = np.zeros([3,3])
-        self.R[0][0] = 5
-        self.R[1][1] = 5
-        self.R[2][2] = 5
+        self.R[0][0] = 1e-3 # 5
+        self.R[1][1] = 1e-3 # 5
+        self.R[2][2] = 1e-3 # 5
 
     def updateQ(self, dt):
         self.Q[0:3, 0:3] = np.identity(3)*self.gyro_psd*dt
@@ -155,9 +155,11 @@ def run_filter_simulation(df):
 
     ax[0].set_title("Roll")
     ax[0].plot(df["time"], kf_ins_res["roll"], label="roll")
+    ax[0].plot(df["time"], df["roll_ideal"], label="roll ideal")
 
     ax[1].set_title("Pitch")
     ax[1].plot(df["time"], kf_ins_res["pitch"], label="pitch")
+    ax[1].plot(df["time"], df["pitch_ideal"], label="pitch ideal")
 
     ax[2].set_title("Gyro bias roll")
     ax[2].plot(df["time"], kf_ins_res["gyro_bias_roll"], label="gyro_bias_roll")
@@ -173,5 +175,5 @@ def run_filter_simulation(df):
 
 if __name__ == "__main__":
     import pandas as pd
-    data = pd.read_csv("gns_ins_data2.csv")
+    data = pd.read_csv("imu_sim.csv")
     run_filter_simulation(data)
